@@ -19,6 +19,7 @@ import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
+import { redis } from "@/lib/db/redis/redis.config.js";
 
 /**
  * Handle chat completion request
@@ -67,17 +68,41 @@ export async function handleChat(request, clientRawRequest = null) {
 
   // Enforce API key if enabled in settings
   const settings = await getSettings();
-  if (settings.requireApiKey) {
-    if (!apiKey) {
-      log.warn("AUTH", "Missing API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
-    }
-    const valid = await isValidApiKey(apiKey);
-    if (!valid) {
-      log.warn("AUTH", "Invalid API key (requireApiKey=true)");
-      return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
-    }
-  }
+  // if (settings.requireApiKey) {
+  //   if (!apiKey) {
+  //     log.warn("AUTH", "Missing API key (requireApiKey=true)");
+  //     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
+  //   }
+  //   const valid = await isValidApiKey(apiKey);
+  //   if (!valid) {
+  //     log.warn("AUTH", "Invalid API key (requireApiKey=true)");
+  //     return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
+  //   }
+  // }
+
+  // ROBINHUD NOTE: custom api validation for robinhud
+  const apiKeyStats = await Promise.all([
+    redis.get(`expireTime:${apiKey}`),
+    redis.get(`dailyConsumed:${apiKey}`),
+    redis.get(`dailyTokenLimit:${apiKey}`),
+  ]);
+
+  console.log({ apiKeyStats });
+
+  const expireTime = apiKeyStats[0] ? new Date(apiKeyStats[0]) : null;
+  if (!expireTime)
+    return errorResponse(
+      HTTP_STATUS.UNAUTHORIZED,
+      'Invalid or expired API key',
+    );
+
+  const dailyConsumed = Number(apiKeyStats[1] || '0');
+  const dailyTokenLimit = Number(apiKeyStats[2] || '0');
+  if (dailyConsumed >= dailyTokenLimit)
+    return errorResponse(
+      HTTP_STATUS.UNAUTHORIZED,
+      'API key reached daily quota limit',
+    );
 
   if (!modelStr) {
     log.warn("CHAT", "Missing model");

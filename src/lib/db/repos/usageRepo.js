@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { redis } from "../redis/redis.config.js";
 
 const PENDING_TIMEOUT_MS = 60 * 1000;
 const RING_CAP = 50;
@@ -250,6 +251,22 @@ export async function saveRequestUsage(entry) {
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
     const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
+
+    const totalTokens = promptTokens + completionTokens;
+    const now = new Date();
+    const nextReset = new Date(now);
+    nextReset.setUTCHours(24, 0, 0, 0);
+    const ttl = Math.ceil((nextReset.getTime() - now.getTime()) / 1000);
+
+    const multi = redis
+      .multi()
+      .incrby(`totalConsumed:system`, totalTokens)
+      .incrby(`totalConsumed:${entry.apiKey}`, totalTokens)
+      .incrby(`dailyConsumed:${entry.apiKey}`, totalTokens)
+      .expire(`dailyConsumed:${entry.apiKey}`, ttl)
+      .incr(`totalRequests:${entry.apiKey}`);
+
+    await multi.exec();
 
     // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
     // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
