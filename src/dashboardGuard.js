@@ -180,8 +180,7 @@ export async function proxy(request) {
   }
 
   if (isPublicLlmApi(pathname)) {
-    console.log({ pathname })
-    if (pathname.startsWith("/v1")) return NextResponse.next();
+    if (pathname.startsWith("/v1/")) return NextResponse.next();
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
     return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
   }
