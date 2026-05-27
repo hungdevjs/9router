@@ -34,6 +34,21 @@ const PUBLIC_API_PATHS = [
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
 const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta"];
 
+// Chat routes that handle their own API key validation inside the handler.
+// These route through handleChat which validates API keys against Redis.
+const CHAT_ROUTES = new Set([
+  "/v1/chat/completions",
+  "/v1/responses",
+  "/v1/responses/compact",
+  "/v1/messages",
+  "/v1/api/chat",
+  "/api/v1/chat/completions",
+  "/api/v1/responses",
+  "/api/v1/responses/compact",
+  "/api/v1/messages",
+  "/api/v1/api/chat",
+]);
+
 // Always require JWT token regardless of requireLogin setting
 const ALWAYS_PROTECTED = [
   "/api/shutdown",
@@ -101,6 +116,13 @@ function isLocalRequest(request) {
 
 function isPublicLlmApi(pathname) {
   return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+function isChatRoute(pathname) {
+  const normalized = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  if (CHAT_ROUTES.has(normalized)) return true;
+  // v1beta models all go through handleChat with its own API key validation
+  return normalized.startsWith("/v1beta/models/") || normalized.startsWith("/api/v1beta/models/");
 }
 
 function extractApiKey(request) {
@@ -180,7 +202,7 @@ export async function proxy(request) {
   }
 
   if (isPublicLlmApi(pathname)) {
-    if (pathname.startsWith("/v1/")) return NextResponse.next();
+    if (isChatRoute(pathname)) return NextResponse.next();
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
     return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
   }
