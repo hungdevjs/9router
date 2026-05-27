@@ -114,29 +114,29 @@ export async function handleChat(request, clientRawRequest = null) {
   const bypassResponse = handleBypassRequest(body, modelStr, userAgent, !!settings.ccFilterNaming);
   if (bypassResponse) return bypassResponse.response || bypassResponse;
 
-  // Check if model is a combo (has multiple models with fallback)
+  // Validate model must be a valid combo
   const comboModels = await getComboModels(modelStr);
-  if (comboModels) {
-    // Check for combo-specific strategy first, fallback to global
-    const comboStrategies = settings.comboStrategies || {};
-    const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
-    const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
-    
-    const comboStickyLimit = settings.comboStickyRoundRobinLimit;
-    log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
-    return handleComboChat({
-      body,
-      models: comboModels,
-      handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
-      log,
-      comboName: modelStr,
-      comboStrategy,
-      comboStickyLimit
-    });
+  if (!comboModels) {
+    log.warn("CHAT", `Model "${modelStr}" is not supported`);
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, `Model "${modelStr}" is not supported`);
   }
 
-  // Single model request
-  return handleSingleModelChat(body, modelStr, clientRawRequest, request, apiKey);
+  // Check for combo-specific strategy first, fallback to global
+  const comboStrategies = settings.comboStrategies || {};
+  const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
+  const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
+
+  const comboStickyLimit = settings.comboStickyRoundRobinLimit;
+  log.info("CHAT", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
+  return handleComboChat({
+    body,
+    models: comboModels,
+    handleSingleModel: (b, m) => handleSingleModelChat(b, m, clientRawRequest, request, apiKey),
+    log,
+    comboName: modelStr,
+    comboStrategy,
+    comboStickyLimit
+  });
 }
 
 /**
