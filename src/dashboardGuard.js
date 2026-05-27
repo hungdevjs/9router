@@ -49,6 +49,12 @@ const CHAT_ROUTES = new Set([
   "/api/v1/api/chat",
 ]);
 
+// Read-only model listing routes — no auth required.
+const PUBLIC_MODEL_ROUTES = new Set([
+  "/v1/models",
+  "/api/v1/models",
+]);
+
 // Always require JWT token regardless of requireLogin setting
 const ALWAYS_PROTECTED = [
   "/api/shutdown",
@@ -123,6 +129,12 @@ function isChatRoute(pathname) {
   if (CHAT_ROUTES.has(normalized)) return true;
   // v1beta models all go through handleChat with its own API key validation
   return normalized.startsWith("/v1beta/models/") || normalized.startsWith("/api/v1beta/models/");
+}
+
+function isPublicModelsRoute(pathname) {
+  const normalized = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  if (PUBLIC_MODEL_ROUTES.has(normalized)) return true;
+  return normalized.startsWith("/v1/models/") || normalized.startsWith("/api/v1/models/");
 }
 
 function extractApiKey(request) {
@@ -202,7 +214,7 @@ export async function proxy(request) {
   }
 
   if (isPublicLlmApi(pathname)) {
-    if (isChatRoute(pathname)) return NextResponse.next();
+    if (isChatRoute(pathname) || isPublicModelsRoute(pathname)) return NextResponse.next();
     if (await canAccessPublicLlmApi(request)) return NextResponse.next();
     return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
   }
