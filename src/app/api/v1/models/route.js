@@ -417,16 +417,28 @@ export async function OPTIONS() {
  * For other capabilities use /v1/models/{kind} (image, tts, stt, embedding, image-to-text, web).
  */
 export async function GET() {
+  let combos = [];
   try {
-    const data = await buildModelsList([LLM_KIND]);
-    return Response.json({ object: "list", data }, {
-      headers: { "Access-Control-Allow-Origin": "*" },
-    });
-  } catch (error) {
-    console.log("Error fetching models:", error);
-    return Response.json(
-      { error: { message: error.message, type: "server_error" } },
-      { status: 500 }
-    );
+    combos = await getCombos();
+  } catch (e) {
+    console.log("Could not fetch combos");
   }
+
+  const data = combos
+    .filter((combo) => !combo.kind || combo.kind === "llm")
+    .map((combo) => {
+      const entry = {
+        id: combo.name,
+        object: "model",
+        owned_by: "combo",
+      };
+      if (combo.kind === "webSearch" || combo.kind === "webFetch") {
+        entry.kind = combo.kind;
+      }
+      return entry;
+    });
+
+  return Response.json({ object: "list", data }, {
+    headers: { "Access-Control-Allow-Origin": "*" },
+  });
 }
